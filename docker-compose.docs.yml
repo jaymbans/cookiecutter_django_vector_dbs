@@ -1,0 +1,18 @@
+services:
+  docs:
+    image: cookiecutter_django_vector_dbs_local_docs
+    container_name: cookiecutter_django_vector_dbs_local_docs
+    build:
+      context: .
+      dockerfile: ./compose/local/docs/Dockerfile
+    env_file:
+      - path: ./.envs/.local/.django
+        required: false
+    volumes:
+      - /app/.venv
+      - ./docs:/docs:z
+      - ./config:/app/config:z
+      - ./cookiecutter_django_vector_dbs:/app/cookiecutter_django_vector_dbs:z
+    ports:
+      - '9000:9000'
+    command: /start-docs

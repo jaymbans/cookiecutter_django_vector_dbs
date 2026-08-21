@@ -1,0 +1,38 @@
+volumes:
+  cookiecutter_django_vector_dbs_local_postgres_data: {}
+  cookiecutter_django_vector_dbs_local_postgres_data_backups: {}
+  
+
+services:
+  django:
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+    image: cookiecutter_django_vector_dbs_local_django
+    container_name: cookiecutter_django_vector_dbs_local_django
+    depends_on:
+      - postgres
+    volumes:
+      - /app/.venv
+      - .:/app:z
+    env_file:
+      - path: ./.envs/.local/.django
+        required: false
+      - path: ./.envs/.local/.postgres
+        required: false
+    ports:
+      - '8000:8000'
+    command: /start
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: cookiecutter_django_vector_dbs_production_postgres
+    container_name: cookiecutter_django_vector_dbs_local_postgres
+    volumes:
+      - cookiecutter_django_vector_dbs_local_postgres_data:/var/lib/postgresql/data
+      - cookiecutter_django_vector_dbs_local_postgres_data_backups:/backups
+    env_file:
+      - path: ./.envs/.local/.postgres
+        required: false
