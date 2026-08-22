@@ -12,6 +12,7 @@ services:
     container_name: cookiecutter_django_vector_dbs_local_django
     depends_on:
       - postgres
+      - mailpit
     volumes:
       - /app/.venv
       - .:/app:z
@@ -36,3 +37,9 @@ services:
     env_file:
       - path: ./.envs/.local/.postgres
         required: false
+
+  mailpit:
+    image: docker.io/axllent/mailpit:latest
+    container_name: cookiecutter_django_vector_dbs_local_mailpit
+    ports:
+      - "8025:8025"
