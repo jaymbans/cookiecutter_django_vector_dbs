@@ -100,6 +100,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "cookiecutter_django_vector_dbs.users",
     # Your stuff: custom apps go here
+    "cookiecutter_django_vector_dbs.search",
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#installed-apps
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
