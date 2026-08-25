@@ -1,54 +1,80 @@
 # Cookiecutter Django Vector Databases
 
-This is a lesson on how to install a vector database within cookiecutter django
+This is a lesson on how to install a vector database within cookiecutter django.
 
 [![Built with Cookiecutter Django](https://img.shields.io/badge/built%20with-Cookiecutter%20Django-ff69b4.svg?logo=cookiecutter)](https://github.com/cookiecutter/cookiecutter-django/)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 License: MIT
 
-## Settings
+## Getting Started
 
-Moved to [settings](https://cookiecutter-django.readthedocs.io/en/latest/1-getting-started/settings.html).
+### 1. Build and start the local stack
 
-## Basic Commands
+This project runs locally through Docker Compose, using `local.yml`. Build the images first, then start the stack:
 
-### Setting Up Your Users
+    docker compose -f local.yml build
+    docker compose -f local.yml up -d
 
-- To create a **normal user account**, just go to Sign Up and fill out the form. Once you submit it, you'll see a "Verify Your E-mail Address" page. Go to your console to see a simulated email verification message. Copy the link into your browser. Now the user's email should be verified and ready to go.
+The `postgres` service is built from the `pgvector/pgvector:pg17` image, so the `vector` Postgres extension is available out of the box — no extra setup on your machine needed.
 
-- To create a **superuser account**, use this command:
+### 2. Apply migrations
 
-      uv run python manage.py createsuperuser
+If you're starting from a fresh database, run migrations to create the schema (this is also what enables the `vector` extension in Postgres, via a `VectorExtension()` operation baked into the `search` app's initial migration):
 
-For convenience, you can keep your normal user logged in on Chrome and your superuser logged in on Firefox (or similar), so that you can see how the site behaves for both kinds of users.
+    docker compose -f local.yml run --rm django python manage.py migrate
 
-### Type checks
+If you've made model changes and need a new migration file, generate one first:
 
-Running type checks with mypy:
+    docker compose -f local.yml run --rm django python manage.py makemigrations
+    docker compose -f local.yml run --rm django python manage.py migrate
 
-    uv run mypy cookiecutter_django_vector_dbs
+### 3. Load the demo data
 
-### Test coverage
+Create a superuser so you can authenticate against the API later:
 
-To run the tests, check your test coverage, and generate an HTML coverage report:
+    docker compose -f local.yml run --rm django python manage.py createsuperuser
 
-    uv run coverage run -m pytest
-    uv run coverage html
-    uv run open htmlcov/index.html
+Then load the sample articles from `ai_articles_dummy.csv`, embedding each one via OpenAI along the way:
 
-#### Running tests with pytest
+    docker compose -f local.yml run --rm django python manage.py load_embeddings
 
-    uv run pytest
+This reads the CSV, generates a 1536-dimension embedding for each article's summary, and bulk-inserts them as `Document` rows.
 
-### Live reloading and Sass CSS compilation
+### 4. Confirm the endpoints are up
 
-Moved to [Live reloading and SASS compilation](https://cookiecutter-django.readthedocs.io/en/latest/2-local-development/developing-locally.html#using-webpack-or-gulp).
+If everything above ran correctly, you should have the following endpoints available at `http://localhost:8000`:
 
-## Deployment
+- `GET /api/documents/` — list all loaded documents
+- `GET /api/documents/{id}/` — retrieve a single document
+- `POST /api/documents/search/` — semantic search: embeds your query and returns the nearest documents by cosine distance
+- `POST /api/auth-token/` — exchange a username/password for an auth token
+- `/api/docs/` — browsable API schema (drf-spectacular)
 
-The following details how to deploy this application.
+## Using the Search Endpoint
 
-### Docker
+### Via the browser
 
-See detailed [cookiecutter-django Docker documentation](https://cookiecutter-django.readthedocs.io/en/latest/3-deployment/deployment-with-docker.html).
+Log in as your superuser, then visit `http://localhost:8000/api/documents/search/`. Since this endpoint doesn't use a request serializer, use the **"Raw data"** tab (not the HTML form tab) to submit JSON directly, e.g.:
+
+```json
+{"query": "a sentence related to one of your articles"}
+```
+
+Hit **POST**, and the response will list the closest matching documents along with their `distance` score. Change the `query` value and resubmit to try different searches.
+
+### Via the CLI (curl)
+
+Since the API requires authentication, first get a token:
+
+    curl -X POST http://localhost:8000/api/auth-token/ \
+      -H "Content-Type: application/json" \
+      -d '{"username": "your_username", "password": "your_password"}'
+
+This returns `{"token": "..."}`. Use that token on the search request:
+
+    curl -X POST http://localhost:8000/api/documents/search/ \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Token <paste-token-here>" \
+      -d '{"query": "a sentence related to one of your articles"}'
+
+The token doesn't expire on its own, so you can reuse it for further requests without repeating the first step.
