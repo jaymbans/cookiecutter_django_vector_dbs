@@ -324,3 +324,4 @@ SPECTACULAR_SETTINGS = {
 }
 # Your stuff...
 # ------------------------------------------------------------------------------
+OPEN_AI_APIKEY=env.str("OPEN_AI_APIKEY")
