@@ -7,28 +7,28 @@ class DocumentSerializer(serializers.ModelSerializer[Document]):
     class Meta:
         model = Document
         fields = [
-            "id", 
-            "title", 
-            "source", 
-            "published_date", 
-            "url", 
-            "summary", 
-            "category"
-            ]
+            "id",
+            "title",
+            "source",
+            "published_date",
+            "url",
+            "summary",
+            "category",
+        ]
 
 
 class DocumentSearchResultSerializer(serializers.ModelSerializer[Document]):
-    distance = serializers.FloatField(read_only=True) 
+    distance = serializers.FloatField(read_only=True)
 
     class Meta:
         model = Document
         fields = [
-            "id", 
-            "title", 
-            "source", 
-            "published_date", 
-            "url", 
-            "summary", 
+            "id",
+            "title",
+            "source",
+            "published_date",
+            "url",
+            "summary",
             "category",
             "distance",
-            ]
+        ]

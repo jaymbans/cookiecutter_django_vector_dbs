@@ -1,7 +1,7 @@
 volumes:
   cookiecutter_django_vector_dbs_local_postgres_data: {}
   cookiecutter_django_vector_dbs_local_postgres_data_backups: {}
-  
+
 
 services:
   django:

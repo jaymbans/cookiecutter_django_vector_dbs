@@ -1,4 +1,5 @@
 import csv
+from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -24,7 +25,7 @@ class Command(BaseCommand):
         csv_path = settings.BASE_DIR / "ai_articles_dummy.csv"
 
         try:
-            with open(csv_path, newline="") as f:
+            with Path.open(csv_path, newline="") as f:
                 rows = list(csv.DictReader(f))
         except FileNotFoundError as exc:
             msg = f"Could not find CSV file at {csv_path}"

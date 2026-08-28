@@ -1,9 +1,8 @@
 from pgvector.django import CosineDistance
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
-import datetime
+from rest_framework.response import Response
 
 from cookiecutter_django_vector_dbs.search.embeddings import create_embeddings
 from cookiecutter_django_vector_dbs.search.models import Document
@@ -24,18 +23,22 @@ class DocumentViewSet(viewsets.ModelViewSet):
         category = request.data.get("category", "")
 
         if not query:
-            raise ValidationError("query is required")
+            error_msg = "query is required"
+            raise ValidationError(error_msg)
 
         date_filter_valid = min_date and max_date
         date_exists = min_date
 
         if date_exists and not date_filter_valid:
-            raise ValidationError("include min and max date or neither (YYYYMMDD)")
+            error_msg = "include min and max date or neither (YYYYMMDD)"
+            raise ValidationError(error_msg)
 
         docs = Document.objects.all()
 
         if date_exists:
-            docs = docs.filter(published_date__gt=min_date).filter(published_date__lt=max_date)
+            docs = docs.filter(published_date__gt=min_date).filter(
+                published_date__lt=max_date,
+            )
 
         if category:
             docs = docs.filter(category=category)
@@ -43,10 +46,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
         query_embedding = create_embeddings([query])[0]
 
         docs = DocumentSearchResultSerializer(
-            docs.annotate(distance=CosineDistance("embedding", query_embedding)).order_by("distance")[:3],
-            many=True
+            docs.annotate(
+                distance=CosineDistance("embedding", query_embedding),
+            ).order_by("distance")[:3],
+            many=True,
         )
-
-
 
         return Response(docs.data)

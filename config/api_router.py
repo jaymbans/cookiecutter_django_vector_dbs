@@ -2,8 +2,8 @@ from django.conf import settings
 from rest_framework.routers import DefaultRouter
 from rest_framework.routers import SimpleRouter
 
-from cookiecutter_django_vector_dbs.users.api.views import UserViewSet
 from cookiecutter_django_vector_dbs.search.api.views import DocumentViewSet
+from cookiecutter_django_vector_dbs.users.api.views import UserViewSet
 
 router = DefaultRouter() if settings.DEBUG else SimpleRouter()
 
