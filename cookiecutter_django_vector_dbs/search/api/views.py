@@ -53,3 +53,12 @@ class DocumentViewSet(viewsets.ModelViewSet):
         )
 
         return Response(docs.data)
+
+    @action(detail=False, methods=["get"])
+    def topics(self, request):
+        distinct_topics = (
+            Document.objects.values_list("category", flat=True).distinct().order_by("category")
+            or []
+        )
+
+        return Response(distinct_topics)
