@@ -55,7 +55,9 @@ class Command(BaseCommand):
             ]
 
             self.stdout.write(f"Connected to {url} with tools: {', '.join(t['function']['name'] for t in tools)}")
-            self.stdout.write("Ask about the articles. Type 'exit' to quit.")
+            self.stdout.write("Ask about the articles, or use the server's prompt:")
+            self.stdout.write("  /find_articles <topic>, <timeframe>   e.g. /find_articles AI in farming, 2025")
+            self.stdout.write("Type 'exit' to quit.")
 
             while True:
                 try:
@@ -64,10 +66,24 @@ class Command(BaseCommand):
                     break
                 if question.lower() in {"exit", "quit"}:
                     break
-                if question:
+                if not question:
+                    continue
+
+                if question.startswith("/find_articles"):
+                    # MCP prompt: the user picks it, the server writes the message.
+                    topic, _, timeframe = question.removeprefix("/find_articles").partition(",")
+                    args = {"topic": topic.strip()}
+                    if timeframe.strip():
+                        args["timeframe"] = timeframe.strip()
+                    prompt = await mcp.get_prompt("find_articles", args)
+                    for m in prompt.messages:
+                        self.stdout.write(self.style.NOTICE(f"\n(prompt from server)\n{m.content.text}"))
+                        messages.append({"role": m.role, "content": m.content.text})
+                else:
                     messages.append({"role": "user", "content": question})
-                    answer = await self.answer(llm, mcp, model, messages, tools)
-                    self.stdout.write(f"\nassistant> {answer}")
+
+                answer = await self.answer(llm, mcp, model, messages, tools)
+                self.stdout.write(f"\nassistant> {answer}")
 
     async def answer(self, llm, mcp, model, messages, tools):
         """Host loop: call the model, run any tools it asks for over MCP, repeat."""
