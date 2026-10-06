@@ -4,7 +4,7 @@ volumes:
 
 
 services:
-  django:
+  django: &django
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
@@ -24,6 +24,15 @@ services:
     ports:
       - '8000:8000'
     command: /start
+
+  mcp:
+    <<: *django
+    container_name: cookiecutter_django_vector_dbs_local_mcp
+    depends_on:
+      - postgres
+    ports:
+      - '8001:8001'
+    command: python manage.py run_mcp_server
 
   postgres:
     build:

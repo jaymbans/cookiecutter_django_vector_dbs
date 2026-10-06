@@ -25,6 +25,7 @@ dependencies = [
   "django-redis==7.0.0",
   "djangorestframework==3.18.0",
   "drf-spectacular==0.30.0",
+  "fastmcp==4.0.11",
   "gunicorn==26.1.0",
   "hiredis==3.4.1",
   "openai>=3.3.1",
