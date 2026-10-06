@@ -81,154 +81,34 @@ The token doesn't expire on its own, so you can reuse it for further requests wi
 
 ## Using the MCP Server
 
-The same article data is also exposed as an [MCP](https://modelcontextprotocol.io) server, built with [FastMCP](https://gofastmcp.com), so an LLM can search it on its own. It runs as a separate process, the `mcp` service in `local.yml`, at `http://localhost:8001/mcp`. It's stateless and answers with plain JSON (no streaming or sessions). The code is in `cookiecutter_django_vector_dbs/search/management/commands/run_mcp_server.py`.
+The article data is also exposed as an [MCP](https://modelcontextprotocol.io) server, built with [FastMCP](https://gofastmcp.com), so an LLM can search it by itself. It runs as the `mcp` service in `local.yml`, at `http://localhost:8001/mcp`, and offers one of each MCP primitive:
 
-It exposes one of each MCP primitive:
+| Primitive | Name | What it does |
+|---|---|---|
+| Tool | `search_documents` | Semantic search over the articles, with optional category and date filters |
+| Resource | `documents://topics` | The list of valid category names |
+| Prompt | `find_articles` | A ready-made instruction for searching well |
 
-| Primitive | Name | Who decides to use it | What it does |
-|---|---|---|---|
-| Tool | `search_documents` | the model | Semantic search with optional `category` and `min_date`/`max_date` filters (ISO `YYYY-MM-DD`, exclusive bounds); returns the 3 closest articles |
-| Resource | `documents://topics` | the app or user | JSON list of the valid category names |
-| Prompt | `find_articles(topic, timeframe?)` | the user | A ready-made instruction showing the model the right way to search |
+The server code is in `search/management/commands/run_mcp_server.py`.
 
 ### 1. Start it
 
-The `mcp` service starts with the rest of the stack. If you've just pulled changes that touch `pyproject.toml` or `uv.lock`, rebuild with fresh virtualenv volumes. Otherwise the containers keep their old `.venv` and fail with `ModuleNotFoundError`:
+The MCP server starts with the rest of the stack (steps 1–3 above):
 
     docker compose -f local.yml up -d --build --renew-anon-volumes
 
-Check that it answers:
+`--renew-anon-volumes` makes sure the containers pick up newly added Python packages.
 
-    curl -X POST http://localhost:8001/mcp \
-      -H "Content-Type: application/json" \
-      -H "Accept: application/json, text/event-stream" \
-      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+### 2. Chat with it
 
-### 2. Connect Claude Code
+    docker compose -f local.yml run --rm django python manage.py mcp_host
+
+This starts a chat with an OpenAI model that can use the MCP server. Ask something like *"Any healthcare AI articles from 2025?"*: you'll see each tool call the model makes (`-> search_documents(...)`) and then its answer. Type `exit` to quit. It uses the same OpenAI key as the rest of the app.
+
+The model never talks to the MCP server directly. `mcp_host` is the **host** in between: it fetches the server's tools, hands them to OpenAI, runs whichever tool the model asks for, and passes the result back. See `search/management/commands/mcp_host.py`.
+
+### 3. Optional: use it from Claude Code
 
     claude mcp add --transport http docs-search http://localhost:8001/mcp
 
-Then ask Claude something like *"Any healthcare AI articles from 2025?"*. You can also attach the resource with `@docs-search:documents://topics`, or run the prompt as `/mcp__docs-search__find_articles`.
-
-### 3. Connect an OpenAI model
-
-An LLM never talks to an MCP server directly. A **host** program sits in the middle. It uses an **MCP client** to fetch the server's tools, hands them to the model, and runs any tool the model asks for. Claude Code is a host. The script below is a minimal one for OpenAI:
-
-```
-you ─► host (openai_host.py) ─┬─ MCP client ─► MCP server :8001 ─► Postgres
-                              └─ OpenAI client ─► OpenAI
-```
-
-Save this as `openai_host.py`:
-
-```python
-"""Minimal MCP host: lets an OpenAI model use the documents-search MCP server.
-
-Usage:
-    python openai_host.py "Any healthcare AI articles from 2025?"
-    python openai_host.py --prompt "AI in farming" 2025     # use the server's find_articles prompt
-"""
-
-import asyncio
-import json
-import os
-import sys
-
-from fastmcp import Client
-from openai import OpenAI
-
-MCP_URL = os.environ.get("MCP_URL", "http://localhost:8001/mcp")
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
-MAX_TURNS = 5
-
-
-# --- MCP client: talks to the MCP server --------------------------------------
-
-
-def to_openai_tool(tool):
-    """Translate an MCP tool definition into OpenAI's function-calling format."""
-    return {
-        "type": "function",
-        "function": {
-            "name": tool.name,
-            "description": tool.description or "",
-            "parameters": tool.input_schema,  # the JSON Schema passes through unchanged
-        },
-    }
-
-
-async def first_messages(mcp, argv):
-    """Build the opening messages from the server's resource and (optionally) prompt."""
-    # Resource -> context the host chooses to load into the system message.
-    topics = (await mcp.read_resource("documents://topics"))[0].text
-    system = {
-        "role": "system",
-        "content": (
-            "You answer questions about a database of AI news articles using the tools "
-            f"provided. Valid categories: {topics}"
-        ),
-    }
-
-    # Prompt -> a template the user picks; the server returns ready-made messages.
-    if argv[0] == "--prompt":
-        args = {"topic": argv[1]}
-        if len(argv) > 2:
-            args["timeframe"] = argv[2]
-        prompt = await mcp.get_prompt("find_articles", args)
-        return [system] + [{"role": m.role, "content": m.content.text} for m in prompt.messages]
-
-    return [system, {"role": "user", "content": " ".join(argv)}]
-
-
-# --- Host: runs the loop between the LLM and the MCP client --------------------
-
-
-async def main(argv):
-    llm = OpenAI()  # reads OPENAI_API_KEY from the environment
-    async with Client(MCP_URL) as mcp:
-        tools = [to_openai_tool(t) for t in await mcp.list_tools()]
-        messages = await first_messages(mcp, argv)
-
-        for _ in range(MAX_TURNS):
-            reply = (
-                llm.chat.completions.create(model=MODEL, messages=messages, tools=tools)
-                .choices[0]
-                .message
-            )
-            messages.append(reply.model_dump(exclude_none=True))
-
-            if not reply.tool_calls:  # no tool requested -> this is the final answer
-                return reply.content
-
-            for call in reply.tool_calls:  # the LLM asked for a tool -> run it over MCP
-                args = json.loads(call.function.arguments)
-                print(f"-> {call.function.name}({args})", file=sys.stderr)
-                result = await mcp.call_tool(call.function.name, args, raise_on_error=False)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call.id,
-                        "content": "\n".join(c.text for c in result.content if c.type == "text"),
-                    },
-                )
-
-    return "Stopped: too many tool calls."
-
-
-if __name__ == "__main__":
-    print(asyncio.run(main(sys.argv[1:])))
-```
-
-Run it from your machine. You need `fastmcp` and `openai`, which are already project dependencies, so `uv run` works. Outside this repo, use `pip install fastmcp openai`.
-
-    export OPENAI_API_KEY=<your-key>
-    uv run python openai_host.py "Any healthcare AI articles from 2025?"
-    uv run python openai_host.py --prompt "AI in farming" 2025
-
-Or run it inside the `mcp` container, which already has the key as `OPEN_AI_APIKEY`. Nothing to install or export:
-
-    docker compose -f local.yml exec -T mcp sh -c 'OPENAI_API_KEY="$OPEN_AI_APIKEY" python - --prompt "AI in farming" 2025' < openai_host.py
-
-Each tool call is printed as it happens (`-> search_documents({...})`), followed by the model's answer. Set `OPENAI_MODEL` to use a different model, or `MCP_URL` to point at a different server.
-
-Note that `parameters` is the server's JSON Schema passed through unchanged. Translating the format at that one point, and passing tool results back as `tool` messages, is all the glue MCP needs: the same server works with Claude Code, OpenAI, or any other model that supports function calling.
+Then ask Claude your question directly.
